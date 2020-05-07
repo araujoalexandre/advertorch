@@ -61,7 +61,7 @@ class CarliniWagnerL2Attack(Attack, LabelMixin):
                  targeted=False, learning_rate=0.01,
                  binary_search_steps=9, max_iterations=10000,
                  abort_early=True, initial_const=1e-3,
-                 clip_min=0., clip_max=1., loss_fn=None):
+                 clip_min=0., clip_max=1., loss_fn=None, l2_bound=None):
         """Carlini Wagner L2 Attack implementation in pytorch."""
         if loss_fn is not None:
             import warnings
@@ -86,6 +86,7 @@ class CarliniWagnerL2Attack(Attack, LabelMixin):
         # The last iteration (if we run many steps) repeat the search once.
         self.repeat = binary_search_steps >= REPEAT_STEP
         self.targeted = targeted
+        self.l2_bound = l2_bound
 
     def _loss_fn(self, output, y_onehot, l2distsq, const):
         # TODO: move this out of the class and make this the default loss_fn
@@ -192,6 +193,10 @@ class CarliniWagnerL2Attack(Attack, LabelMixin):
                 else:
                     loss_coeffs[ii] *= 10
 
+    def bound_attack(self, x, x_adv):
+      l2_eps = torch.norm(x_adv - x, p=2, dim=1)
+      x_adv[self.l2_bound < l2_eps] = x[self.l2_bound < l2_eps]
+      return x_adv
 
     def perturb(self, x, y=None):
         x, y = self._verify_and_process_inputs(x, y)
@@ -243,5 +248,8 @@ class CarliniWagnerL2Attack(Attack, LabelMixin):
             self._update_loss_coeffs(
                 y, cur_labels, batch_size,
                 loss_coeffs, coeff_upper_bound, coeff_lower_bound)
+
+        if self.l2_bound is not None:
+          final_advs = self.bound_attack(x, final_advs) 
 
         return final_advs
