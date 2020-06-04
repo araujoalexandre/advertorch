@@ -10,6 +10,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -194,8 +195,11 @@ class CarliniWagnerL2Attack(Attack, LabelMixin):
                     loss_coeffs[ii] *= 10
 
     def bound_attack(self, x, x_adv):
-      l2_eps = torch.norm(x_adv - x, p=2, dim=1)
-      x_adv[self.l2_bound < l2_eps] = x[self.l2_bound < l2_eps]
+      bs = self.batch_size
+      size = x.view(bs, -1).shape[-1]
+      l2_eps = torch.norm(
+        x_adv.view(bs, -1) - x.view(bs, -1), p=2, dim=1)
+      x_adv[self.l2_bound < l2_eps, ...] = x[self.l2_bound < l2_eps, ...]
       return x_adv
 
     def perturb(self, x, y=None):
@@ -205,13 +209,13 @@ class CarliniWagnerL2Attack(Attack, LabelMixin):
         if y is None:
             y = self._get_predicted_label(x)
         x = replicate_input(x)
-        batch_size = len(x)
+        self.batch_size = batch_size = len(x)
         coeff_lower_bound = x.new_zeros(batch_size)
         coeff_upper_bound = x.new_ones(batch_size) * CARLINI_COEFF_UPPER
         loss_coeffs = torch.ones_like(y).float() * self.initial_const
         final_l2distsqs = [CARLINI_L2DIST_UPPER] * batch_size
         final_labels = [INVALID_LABEL] * batch_size
-        final_advs = x
+        final_advs = x.clone()
         x_atanh = self._get_arctanh_x(x)
         y_onehot = to_one_hot(y, self.num_classes).float()
 
